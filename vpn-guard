@@ -1,0 +1,62 @@
+#!/bin/zsh
+# Freeze AI agent CLIs while the VPN is not connected, resume them when it is back.
+# Any status other than Connected counts as down, including Disconnecting and errors.
+# Wakes on network state events from configd, and every VPN_GUARD_POLL seconds as a fallback.
+#   vpn-guard                  watch (run by launchd)
+#   vpn-guard run CMD [ARGS]   run CMD only if the VPN is connected, else exit 1
+# Env: VPN_GUARD_SERVICE, VPN_GUARD_PROCS (space separated), VPN_GUARD_POLL (seconds).
+
+zmodload zsh/datetime
+service=${VPN_GUARD_SERVICE:-Sota Connect}
+
+vpn_up() {
+  vpn_status=$(/usr/sbin/scutil --nc status $service 2>/dev/null)
+  vpn_status=${vpn_status%%$'\n'*}
+  [[ $vpn_status == Connected ]]
+}
+
+if [[ $1 == run ]]; then
+  shift
+  vpn_up && exec "$@"
+  print -u2 -- "Not started: $service is not connected. Connect the VPN and try again."
+  exit 1
+fi
+
+procs=(${=VPN_GUARD_PROCS:-claude codex})
+poll=${VPN_GUARD_POLL:-5}
+
+log() { print -r -- "$(strftime '%F %T' $EPOCHSECONDS).${${EPOCHREALTIME#*.}[1,3]} $*"; }
+signal() { local p; for p in $procs; do /usr/bin/pkill -$1 -x $p; done; }
+
+check() {
+  local vpn_status route
+  if vpn_up; then
+    [[ $state == up ]] || { signal CONT; log "up: $vpn_status, resumed"; state=up; }
+  else
+    signal STOP # on every check: also catches agents started while down
+    if [[ $state != down ]]; then
+      # Where the default route pointed at freeze time: a tunnel (utun) means no leak yet.
+      route=$(/sbin/route -n get default 2>/dev/null | /usr/bin/awk '/interface:/ {print $2}')
+      log "down: ${vpn_status:-no status}, frozen, route=${route:-none}"
+      state=down
+    fi
+  fi
+}
+
+# scutil prints a few lines on every change of the watched keys; cat keeps its stdin open.
+coproc { { print 'n.add State:/Network/Global/IPv4'
+           print 'n.add State:/Network/Service/.*/VPN pattern'
+           print 'n.watch'
+           exec /bin/cat; } | /usr/sbin/scutil; }
+watcher=$!
+trap '/usr/bin/pkill -P $watcher; kill $watcher 2>/dev/null' EXIT
+trap 'exit' INT TERM
+
+state=
+check
+while :; do
+  if read -t $poll -p line; then
+    while read -t 0.05 -p line; do :; done # drain the burst, check once
+  fi
+  check
+done
