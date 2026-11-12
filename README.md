@@ -52,6 +52,10 @@ Environment variables, set in the LaunchAgent plist for the watchdog:
 make test   # run mode and freeze/resume on a fake process; resume checks need the VPN connected
 ```
 
+## Development
+
+Checks: `make lint`
+
 ## License
 
 MIT

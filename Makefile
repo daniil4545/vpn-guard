@@ -3,7 +3,7 @@ AGENTS := $(HOME)/Library/LaunchAgents
 PLIST  := $(AGENTS)/local.vpn-guard.plist
 DOMAIN := gui/$(shell id -u)
 
-.PHONY: install uninstall restart log test lint commit-check
+.PHONY: install uninstall restart log test lint
 
 install:
 	mkdir -p $(BIN) $(AGENTS)
@@ -29,6 +29,4 @@ test:
 
 lint:
 	zsh -n vpn-guard
-	shellcheck test.sh
-
-commit-check: lint
+	uvx --from shellcheck-py==0.11.0.1 shellcheck test.sh
