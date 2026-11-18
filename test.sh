@@ -3,6 +3,7 @@
 # The resume checks need the configured VPN service to be connected, otherwise they are skipped.
 set -u
 cd "$(dirname "$0")" || exit 1
+python3 ./test_terminal.py || exit 1
 tmp=$(mktemp -d)
 trap 'kill "$agent" 2>/dev/null; wait "$agent" 2>/dev/null; rm -rf "$tmp"' EXIT
 fail=0
