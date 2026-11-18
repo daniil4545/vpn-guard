@@ -17,7 +17,13 @@ vpn_up() {
 
 if [[ $1 == run ]]; then
   shift
-  vpn_up && exec "$@"
+  if vpn_up; then
+    # Keep the foreground job alive while the watchdog stops only the agent.
+    # Defer Ctrl-C until the child resumes, without making it inherit SIG_IGN.
+    trap ':' INT
+    "$@"
+    exit $?
+  fi
   print -u2 -- "Not started: $service is not connected. Connect the VPN and try again."
   exit 1
 fi
